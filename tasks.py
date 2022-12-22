@@ -1,10 +1,13 @@
 from __future__ import annotations
-from api_client import YandexWeatherAPI
-from concurrent.futures import ThreadPoolExecutor
+
 import json
-from dataclasses import dataclass
-from typing import List, Tuple
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+
+from api_client import YandexWeatherAPI
+from mytypes import (CityAVGDict, CityDict, CityResultDict, DateAVGDict,
+                     DateDict)
 
 thread_lock = threading.Lock()
 
@@ -13,10 +16,12 @@ class DataFetchingTask:
     """получение данных через API c YandexWeatherAPI."""
 
     @staticmethod
-    def get_data(city) -> dict:
+    def get_data(city: str) -> CityDict:
         ywAPI = YandexWeatherAPI()
-        response = ywAPI.get_forecasting(city)
-        return {'city_name': city, 'forecasts': response['forecasts']}
+        if response := ywAPI.get_forecasting(city):
+            return {'city_name': city, 'forecasts': response['forecasts']}
+        else:
+            return {}
 
 
 class DataCalculationTask:
@@ -24,10 +29,11 @@ class DataCalculationTask:
     за все дни в одном городе.
     """
 
-    AVG_TEMP = AVG_DRY = float('-inf')
+    AVG_TEMP: float = float('-inf')
+    AVG_DRY: float = float('-inf')
 
     @staticmethod
-    def day_data(date: dict) -> dict:
+    def day_data(date: DateDict) -> DateAVGDict:
         """Вычисление данных по температуре и сухим часам за один день.
         Args:
             day (dict): дата и  список словарей данных за день по часам.
@@ -36,7 +42,7 @@ class DataCalculationTask:
         """
 
         if not date.get('hours'):
-            return {'date': date['date']}
+            return {'date': date['date'], 'avg_temp': 0, 'count_dry': 0}
 
         dry = ('clear', 'partly-cloudy', 'cloudy', 'overcast')
 
@@ -58,10 +64,10 @@ class DataCalculationTask:
                 'count_dry': count_dry,
             }
             if num_temp
-            else {'date': date['date']}
+            else {'date': date['date'], 'avg_temp': 0, 'count_dry': 0}
         )
 
-    def avg_data(self, city_data):
+    def avg_data(self, city_data: DateAVGDict):
         """Подсчёт средних значений температуры и количества сухих дней
             в городе за все дни.
         Args:
@@ -76,7 +82,7 @@ class DataCalculationTask:
                 self.AVG_TEMP = (self.AVG_TEMP + city_data['avg_temp']) / 2
                 self.AVG_DRY = (self.AVG_DRY + city_data['count_dry']) / 2
 
-    def city_data(self, city_forecasts: dict) -> dict:
+    def city_data(self, city_forecasts: CityDict) -> CityResultDict:
         """Вычисление данных по температуре и сухим часам по каждому
         дню в одном городе.
         Args:
@@ -105,7 +111,7 @@ class DataAggregationTask:
     """Сохраняем обработанные данные в json."""
 
     @staticmethod
-    def to_json(data: list):
+    def to_json(data: list[CityResultDict]):
         with open('cities_data.json', 'w') as outfile:
             json.dump(data, outfile)
 
@@ -116,7 +122,7 @@ class City:
 
     __slots__ = ['name', 'temp', 'dry']
 
-    def __init__(self, data):
+    def __init__(self, data: CityAVGDict):
         self.name: str = data['city']
         self.temp: float = data['avg']['avg_temp']
         self.dry: float = data['avg']['avg_dry']
@@ -132,7 +138,7 @@ class City:
 class MyThread(threading.Thread):
     """Синхронизация потоков."""
 
-    def __init__(self, city):
+    def __init__(self, city: City):
         threading.Thread.__init__(self)
         self.city = city
 
@@ -150,22 +156,22 @@ BEST_CITY = City({'city': 'ZZ', 'avg': {"avg_temp": -99, "avg_dry": -99}})
 class DataAnalyzingTask:
     """Определяем самый благориятный город."""
 
-    def compare(self):
+    def compare(self: City):
         """Поиск города с лучшими параметрами.
         Args:
-            city (City): объект класса City.
+            self (City): объект класса City.
         """
 
         global BEST_CITY
         if self < BEST_CITY:
             BEST_CITY = self
 
-    def raiting(self):
+    def raiting(self: list[CityResultDict]) -> City:
         """Определяем самый благориятный город.
         Args:
-            data (dict): словарь: город и средние данные о погоде в нем.
+            self (dict): словарь: город и средние данные о погоде в нем.
         Returns:
-            city (City): лучший город с его средними парамтерами.
+            BEST_CITY (City): лучший город с его средними парамтерами.
         """
 
         global BEST_CITY
