@@ -90,3 +90,29 @@ city_name = "MOSCOW"
 ywAPI = YandexWeatherAPI()
 resp = ywAPI.get_forecasting(city_name)
 ```
+
+
+        {
+          "hour": "1",
+          "hour_ts": 1653516000,
+          "temp": 10,
+          "feels_like": 7,
+          "icon": "ovc",
+          "condition": "overcast",
+          "cloudness": 1,
+          "prec_type": 0,
+          "prec_strength": 0,
+          "is_thunder": false,
+          "wind_dir": "w",
+          "wind_speed": 1.7,
+          "wind_gust": 3.2,
+          "pressure_mm": 747,
+          "pressure_pa": 995,
+          "humidity": 77,
+          "uv_index": 0,
+          "soil_temp": 9,
+          "soil_moisture": 0.22,
+          "prec_mm": 0,
+          "prec_period": 60,
+          "prec_prob": 0
+        },

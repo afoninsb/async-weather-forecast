@@ -1,9 +1,6 @@
 # import logging
-# import threading
-# import subprocess
-# import multiprocessing
+import multiprocessing
 
-from api_client import YandexWeatherAPI
 from tasks import (
     DataFetchingTask,
     DataCalculationTask,
@@ -17,10 +14,27 @@ def forecast_weather():
     """
     Анализ погодных условий по городам
     """
-    # city_name = "MOSCOW"
-    # ywAPI = YandexWeatherAPI()
-    # resp = ywAPI.get_forecasting(city_name)
-    pass
+    pool = multiprocessing.Pool(processes=4)
+
+    # Получаем данные
+    cities_data = pool.map(
+        DataFetchingTask.get_data, CITIES, chunksize=len(CITIES)
+    )
+
+    # Вычисляем необходимые средние значения
+    dct = DataCalculationTask()
+    calculated_data = pool.map(
+        dct.city_data, cities_data, chunksize=len(cities_data)
+    )
+
+    pool.close()
+    pool.join()
+
+    # Сохраняем данные в json
+    DataAggregationTask.to_json(calculated_data)
+
+    # Определяем лучший город
+    print(DataAnalyzingTask.raiting(calculated_data))
 
 
 if __name__ == "__main__":

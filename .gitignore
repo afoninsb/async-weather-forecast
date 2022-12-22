@@ -3,3 +3,7 @@ creds.ini
 .idea/
 __pycache__/
 *.pyc
+venv/
+.mypy_cache/
+.pytest_cache/
+.vscode/
