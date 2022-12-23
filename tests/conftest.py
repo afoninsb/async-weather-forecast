@@ -1,5 +1,7 @@
 import pytest
 
+from tasks import City
+
 
 @pytest.fixture()
 def right_data():
@@ -102,3 +104,19 @@ def initial_city_data():
         },
         ]
     }
+
+
+@pytest.fixture()
+def for_rating():
+    """Данные для рейтинга."""
+    return [
+        {
+            'city': 'city_warm', 'avg': {"avg_temp": 30.3, "avg_dry": 2.2}
+        },
+        {
+            'city': 'city_dry', 'avg': {"avg_temp": 30.3, "avg_dry": 3.3}
+        },
+        {
+            'city': 'city_cold', 'avg': {"avg_temp": 10.1, "avg_dry": 3.3}
+        }
+    ]

@@ -1,22 +1,34 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from api_client import YandexWeatherAPI
-from mytypes import (CityAVGDict, CityDict, CityResultDict, DateAVGDict,
-                     DateDict)
+from mytypes import (
+    CityAVGDict,
+    CityDict,
+    CityResultDict,
+    DateAVGDict,
+    DateDict
+)
 
 thread_lock = threading.Lock()
 
 
 class DataFetchingTask:
-    """получение данных через API c YandexWeatherAPI."""
+    """Получение данных через API c YandexWeatherAPI."""
 
     @staticmethod
     def get_data(city: str) -> CityDict:
+        """Получение данных для города по API.
+        Args:
+            city (str): имя города.
+        Returns:
+            dict: имя города и все данные, полученные для него.
+        """
         ywAPI = YandexWeatherAPI()
         if response := ywAPI.get_forecasting(city):
             return {'city_name': city, 'forecasts': response['forecasts']}
@@ -36,13 +48,14 @@ class DataCalculationTask:
     def day_data(date: DateDict) -> DateAVGDict:
         """Вычисление данных по температуре и сухим часам за один день.
         Args:
-            day (dict): дата и  список словарей данных за день по часам.
+            date (dict): дата и  список словарей данных за день по часам.
         Returns:
             dict: {'date': date, 'avg_temp': avg_temp, 'count_dry': count_dry}.
         """
 
+        not_full_data = {'date': date['date'], 'avg_temp': 0, 'count_dry': 0}
         if not date.get('hours'):
-            return {'date': date['date'], 'avg_temp': 0, 'count_dry': 0}
+            return not_full_data
 
         dry = ('clear', 'partly-cloudy', 'cloudy', 'overcast')
 
@@ -57,15 +70,14 @@ class DataCalculationTask:
             if hour['condition'] in dry:
                 count_dry += 1
 
-        return (
-            {
+        if num_temp:
+            return {
                 'date': date['date'],
                 'avg_temp': float("{0:.1f}".format(sum_temp / num_temp)),
                 'count_dry': count_dry,
             }
-            if num_temp
-            else {'date': date['date'], 'avg_temp': 0, 'count_dry': 0}
-        )
+        else:
+            return not_full_data
 
     def avg_data(self, city_data: DateAVGDict):
         """Подсчёт средних значений температуры и количества сухих дней
@@ -92,17 +104,32 @@ class DataCalculationTask:
                    'count_dry': count_dry}, 'avg': (avg_temp, avg_count_dry)}.
         """
 
+        city_name = city_forecasts['city_name']
+        logging.info(f'Начинаем расчёт для города {city_name}')
+        logging.info('Начинаем расчёт средних значений по дням '
+                     f'для города {city_name}')
         with ThreadPoolExecutor() as pool:
             city_data = pool.map(self.day_data, city_forecasts['forecasts'])
+        logging.info('Завершили расчёт средних значений по дням '
+                     f'для города {city_name}')
         city_data = list(city_data)
+        logging.info('Начинаем расчёт средних значений за все дни '
+                     f'для города {city_name}')
         with ThreadPoolExecutor() as pool:
             pool.map(self.avg_data, city_data)
+        avg_temp = float("{0:.1f}".format(self.AVG_TEMP))
+        avg_dry = float("{0:.1f}".format(self.AVG_DRY))
+        logging.info(
+            'Завершили расчёт средних значений за все дни '
+            f'для города {city_name}.'
+            f'avg_temp = {avg_temp}, avg_dry = {avg_dry}'
+        )
         return {
-            'city': city_forecasts['city_name'],
+            'city': city_name,
             'data': city_data,
             'avg': {
-                'avg_temp': float("{0:.1f}".format(self.AVG_TEMP)),
-                'avg_dry': float("{0:.1f}".format(self.AVG_DRY))
+                'avg_temp': avg_temp,
+                'avg_dry': avg_dry
             }
         }
 
@@ -144,9 +171,11 @@ class MyThread(threading.Thread):
 
     def run(self):
         thread_lock.acquire()
+        logging.info(f'Проверяем город {self.city}')
         try:
             DataAnalyzingTask.compare(self.city)
         finally:
+            logging.info(f'Завершили проверку города {self.city}')
             thread_lock.release()
 
 
@@ -154,7 +183,7 @@ BEST_CITY = City({'city': 'ZZ', 'avg': {"avg_temp": -99, "avg_dry": -99}})
 
 
 class DataAnalyzingTask:
-    """Определяем самый благориятный город."""
+    """Определяем самый благоприятный город."""
 
     def compare(self: City):
         """Поиск города с лучшими параметрами.
@@ -165,8 +194,9 @@ class DataAnalyzingTask:
         global BEST_CITY
         if self < BEST_CITY:
             BEST_CITY = self
+        logging.info(f'Пока лучший город {BEST_CITY}')
 
-    def raiting(self: list[CityResultDict]) -> City:
+    def rating(self: list[CityResultDict]) -> City:
         """Определяем самый благориятный город.
         Args:
             self (dict): словарь: город и средние данные о погоде в нем.

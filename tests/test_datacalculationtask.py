@@ -1,4 +1,4 @@
-from tasks import DataCalculationTask
+from tasks import City, DataAnalyzingTask, DataCalculationTask
 
 
 def test_right_data(right_data):
@@ -29,7 +29,7 @@ def test_empty_data(incomplete_data, empty_data):
     data = (incomplete_data, empty_data)
     for dt in data:
         result = DataCalculationTask.day_data(dt)
-        assert result == {'date': dt['date']}, (
+        assert result == {'date': dt['date'], 'avg_temp': 0, 'count_dry': 0}, (
             'Проверьте, что `day_data` отдаёт только дату, когда нет данных '
             'о погоде с 9 до 19 ч или данные о погоде в этот день отсутствуют'
             ' совсем.'
@@ -84,4 +84,15 @@ def test_city_data(initial_city_data):
     }
     assert result == city_data, (
         'Проверьте, что `city_data` выдаёт данные в правильном формате.'
+    )
+
+
+def test_rating(for_rating):
+    # GIVEN словарь с данными по трём городам.
+    # THEN возвращются данные по городу с большей темпратурой и более сухой.
+
+    result = DataAnalyzingTask.rating(for_rating)
+    assert str(result) == str(City(for_rating[1])), (
+        'Проверьте, что `compare` правильно сравнивает объекты City '
+        'по температуре.'
     )
