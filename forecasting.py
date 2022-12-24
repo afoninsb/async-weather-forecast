@@ -1,5 +1,6 @@
 import logging
 import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 
 from tasks import (
     DataAggregationTask,
@@ -14,28 +15,22 @@ def forecast_weather():
     """
     Анализ погодных условий по городам
     """
-    pool = multiprocessing.Pool(processes=4)
 
-    # Получаем данные
+    # Получаем данные по API
     logging.info('Начинаем импорт json по API')
-    calculated_data = []
-    if cities_data := pool.map(
-        DataFetchingTask.get_data, CITIES, chunksize=len(CITIES)
-    ):
-        logging.info('Импорт json по API завершён удачно')
-
-        # Вычисляем необходимые средние значения
-        logging.info('Начинаем расчёт средних значений для всех городов')
-        dct = DataCalculationTask()
-        calculated_data = pool.map(
-            dct.city_data, cities_data, chunksize=len(cities_data)
+    with ThreadPoolExecutor() as pool:
+        cities_data = pool.map(
+            DataFetchingTask.get_data, CITIES, chunksize=len(CITIES)
         )
-    else:
-        logging.error('Импорт json по API вернул пустой словарь!')
+    if not cities_data:
+        return
+    logging.info('Импорт json по API завершён удачно')
 
-    pool.close()
-    pool.join()
-
+    # Рассчитываем средние значения
+    logging.info('Начинаем расчёт средних значений для всех городов')
+    dct = DataCalculationTask()
+    pool = multiprocessing.Pool()
+    calculated_data = pool.map(dct.city_data, cities_data)
     if not calculated_data:
         logging.error(
             'Расчёт средних значений для всех городов вернул пустой словарь!'
@@ -43,15 +38,21 @@ def forecast_weather():
         return
     logging.info('Расчёт средних значений для всех городов завершён')
 
+    # Сохраняем данные в csv
     logging.info('Сохраняем данные в файл')
-    # Сохраняем данные в json
-    DataAggregationTask.to_json(calculated_data)
+    write_to_csv = DataAggregationTask()
+    write_to_csv.to_csv(calculated_data)
     logging.info('Сохранение данных в файл завершено')
+
+    pool.close()
+    pool.join()
 
     # Определяем лучший город
     logging.info('Начинаем определение лучшего города')
-    best_city = DataAnalyzingTask.rating(calculated_data)
+    dat = DataAnalyzingTask()
+    best_city = dat.rating(calculated_data)
     logging.info('Определение лучшего города завершено')
+
     return best_city
 
 

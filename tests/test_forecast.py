@@ -1,13 +1,13 @@
-from tasks import City, DataAnalyzingTask, DataCalculationTask
+from tasks import City, DataCalculationTask
 
 
-def test_right_data(right_data):
+def test_right_data(get_datacalculationtask, right_data):
     # GIVEN в данных есть информация о погоде с 9 до 19 часов.
     # THEN возвращются: дата; средняя температура за указанный период;
     #                   сумма сухих часов за указанный период.
 
     hours_data = right_data['hours']
-    result = DataCalculationTask.day_data(right_data)
+    result = get_datacalculationtask.day_data(right_data)
     assert right_data['date'] == result['date'], (
         'Проверьте, что `day_data` отдаёт правильную дату в словарь.'
     )
@@ -21,14 +21,14 @@ def test_right_data(right_data):
     )
 
 
-def test_empty_data(incomplete_data, empty_data):
+def test_empty_data(get_datacalculationtask, incomplete_data, empty_data):
     # GIVEN в данных нет информация о погоде с 9 до 19 часов или
     #       совсем отсутствует информация о погоде за весь день.
     # THEN возвращются словарь только с датой.
 
     data = (incomplete_data, empty_data)
     for dt in data:
-        result = DataCalculationTask.day_data(dt)
+        result = get_datacalculationtask.day_data(dt)
         assert result == {'date': dt['date'], 'avg_temp': 0, 'count_dry': 0}, (
             'Проверьте, что `day_data` отдаёт только дату, когда нет данных '
             'о погоде с 9 до 19 ч или данные о погоде в этот день отсутствуют'
@@ -87,12 +87,20 @@ def test_city_data(initial_city_data):
     )
 
 
-def test_rating(for_rating):
+def test_rating(get_dataanalyzingtask, for_rating):
     # GIVEN словарь с данными по трём городам.
     # THEN возвращются данные по городу с большей темпратурой и более сухой.
 
-    result = DataAnalyzingTask.rating(for_rating)
+    result = get_dataanalyzingtask.rating(for_rating)
     assert str(result) == str(City(for_rating[1])), (
+        'Проверьте, что `compare` правильно сравнивает объекты City '
+        'по температуре и количеству сухих дней.'
+    )
+    assert str(result) != str(City(for_rating[0])), (
+        'Проверьте, что `compare` правильно сравнивает объекты City '
+        'по количеству сухих дней.'
+    )
+    assert str(result) != str(City(for_rating[2])), (
         'Проверьте, что `compare` правильно сравнивает объекты City '
         'по температуре.'
     )

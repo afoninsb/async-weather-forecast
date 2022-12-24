@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
+import csv
 import logging
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from threading import Thread, Lock
 
 from api_client import YandexWeatherAPI
 from mytypes import (
@@ -15,8 +14,6 @@ from mytypes import (
     DateDict
 )
 
-thread_lock = threading.Lock()
-
 
 class DataFetchingTask:
     """Получение данных через API c YandexWeatherAPI."""
@@ -24,16 +21,15 @@ class DataFetchingTask:
     @staticmethod
     def get_data(city: str) -> CityDict:
         """Получение данных для города по API.
+
         Args:
             city (str): имя города.
         Returns:
             dict: имя города и все данные, полученные для него.
         """
-        ywAPI = YandexWeatherAPI()
-        if response := ywAPI.get_forecasting(city):
+        yw = YandexWeatherAPI()
+        if response := yw.get_forecasting(city):
             return {'city_name': city, 'forecasts': response['forecasts']}
-        else:
-            return {}
 
 
 class DataCalculationTask:
@@ -43,17 +39,21 @@ class DataCalculationTask:
 
     AVG_TEMP: float = float('-inf')
     AVG_DRY: float = float('-inf')
+    HOUR_MIN = 9
+    HOUR_MAX = 19
 
-    @staticmethod
-    def day_data(date: DateDict) -> DateAVGDict:
+    def day_data(self, date: DateDict) -> DateAVGDict:
         """Вычисление данных по температуре и сухим часам за один день.
+
         Args:
             date (dict): дата и  список словарей данных за день по часам.
         Returns:
             dict: {'date': date, 'avg_temp': avg_temp, 'count_dry': count_dry}.
         """
 
-        not_full_data = {'date': date['date'], 'avg_temp': 0, 'count_dry': 0}
+        not_full_data: DateAVGDict = {
+            'date': date['date'], 'avg_temp': 0, 'count_dry': 0
+        }
         if not date.get('hours'):
             return not_full_data
 
@@ -61,9 +61,9 @@ class DataCalculationTask:
 
         sum_temp = num_temp = count_dry = 0
         for hour in date['hours']:
-            if int(hour['hour']) < 9:
+            if int(hour['hour']) < self.HOUR_MIN:
                 continue
-            elif int(hour['hour']) > 19:
+            elif int(hour['hour']) > self.HOUR_MAX:
                 break
             sum_temp += hour['temp']
             num_temp += 1
@@ -82,9 +82,9 @@ class DataCalculationTask:
     def avg_data(self, city_data: DateAVGDict):
         """Подсчёт средних значений температуры и количества сухих дней
             в городе за все дни.
+
         Args:
-            city_data (dict): словарь: город и данные о погоде в нем
-                              по дням и часам.
+            city_data (dict): словарь: средние данные по дням.
         """
         if city_data.get('avg_temp'):
             if self.AVG_TEMP == float('-inf'):
@@ -97,6 +97,7 @@ class DataCalculationTask:
     def city_data(self, city_forecasts: CityDict) -> CityResultDict:
         """Вычисление данных по температуре и сухим часам по каждому
         дню в одном городе.
+
         Args:
             city_forecasts (dict): словарь: город и данные о погоде в нем.
         Returns:
@@ -108,15 +109,21 @@ class DataCalculationTask:
         logging.info(f'Начинаем расчёт для города {city_name}')
         logging.info('Начинаем расчёт средних значений по дням '
                      f'для города {city_name}')
-        with ThreadPoolExecutor() as pool:
-            city_data = pool.map(self.day_data, city_forecasts['forecasts'])
+        city_data: CityResultDict = {
+            'city': city_name,
+            'data': [
+                self.day_data(date)
+                for date in city_forecasts['forecasts']
+            ],
+            'avg': {}
+        }
         logging.info('Завершили расчёт средних значений по дням '
                      f'для города {city_name}')
-        city_data = list(city_data)
+
         logging.info('Начинаем расчёт средних значений за все дни '
                      f'для города {city_name}')
-        with ThreadPoolExecutor() as pool:
-            pool.map(self.avg_data, city_data)
+        for date in city_data['data']:
+            self.avg_data(date)
         avg_temp = float("{0:.1f}".format(self.AVG_TEMP))
         avg_dry = float("{0:.1f}".format(self.AVG_DRY))
         logging.info(
@@ -124,23 +131,55 @@ class DataCalculationTask:
             f'для города {city_name}.'
             f'avg_temp = {avg_temp}, avg_dry = {avg_dry}'
         )
-        return {
-            'city': city_name,
-            'data': city_data,
-            'avg': {
-                'avg_temp': avg_temp,
-                'avg_dry': avg_dry
-            }
-        }
+        city_data['avg'] = {'avg_temp': avg_temp, 'avg_dry': avg_dry}
+        return city_data
 
 
 class DataAggregationTask:
-    """Сохраняем обработанные данные в json."""
+    """Сохраняем обработанные данные в csv."""
 
-    @staticmethod
-    def to_json(data: list[CityResultDict]):
-        with open('cities_data.json', 'w') as outfile:
-            json.dump(data, outfile)
+    lock = Lock()
+
+    def write_to_csv(self, obj: csv.writer, city: CityResultDict):
+        """Запись информации о городе в csv.
+
+        Args:
+            obj (csv.writer): объекст csv-файла.
+            city (CityResultDict): информация о городе.
+        """
+
+        with self.lock:
+            row = [city['city']]
+            row.extend(iter(city['data']))
+            row.extend(
+                (city['avg']['avg_temp'], city['avg']['avg_dry'])
+            )
+            obj.writerow(row)
+
+    def to_csv(self, data: list[CityResultDict]):
+        """Запись информации о всех городах в csv.
+
+        Args:
+            data (list[CityResultDict]): список словарей
+                                         с информацией о городах.
+        """
+
+        names = ['city']
+        names.extend(f'day_{i + 1}' for i in range(len(data[0]['data'])))
+        names.extend(('avg_temp', 'avg_dry'))
+
+        with open('cities_data.csv', mode='w', encoding='utf-8') as w_file:
+            file_writer = csv.writer(w_file, delimiter=',')
+            file_writer.writerow(names)
+
+            thread: list[Thread] = [Thread()] * len(data)
+            for number, city in enumerate(data):
+                thread[number] = Thread(
+                    target=self.write_to_csv, args=(file_writer, city)
+                )
+                thread[number].start()
+            for number in range(len(data)):
+                thread[number].join()
 
 
 @dataclass
@@ -162,55 +201,38 @@ class City:
                 < (-obj.temp, -obj.dry))
 
 
-class MyThread(threading.Thread):
-    """Синхронизация потоков."""
-
-    def __init__(self, city: City):
-        threading.Thread.__init__(self)
-        self.city = city
-
-    def run(self):
-        thread_lock.acquire()
-        logging.info(f'Проверяем город {self.city}')
-        try:
-            DataAnalyzingTask.compare(self.city)
-        finally:
-            logging.info(f'Завершили проверку города {self.city}')
-            thread_lock.release()
-
-
-BEST_CITY = City({'city': 'ZZ', 'avg': {"avg_temp": -99, "avg_dry": -99}})
-
-
 class DataAnalyzingTask:
     """Определяем самый благоприятный город."""
 
-    def compare(self: City):
+    def __init__(self):
+        self.best_city: City = City(
+            {'city': 'ZZ', 'avg': {"avg_temp": -99, "avg_dry": -99}}
+        )
+
+    def compare(self, city: City):
         """Поиск города с лучшими параметрами.
+
         Args:
             self (City): объект класса City.
         """
 
-        global BEST_CITY
-        if self < BEST_CITY:
-            BEST_CITY = self
-        logging.info(f'Пока лучший город {BEST_CITY}')
+        if city < self.best_city:
+            self.best_city = city
+        logging.info(f'Пока лучший город {self.best_city}')
 
-    def rating(self: list[CityResultDict]) -> City:
+    def rating(self, cities: list[CityResultDict]) -> City:
         """Определяем самый благориятный город.
+
         Args:
             self (dict): словарь: город и средние данные о погоде в нем.
         Returns:
             BEST_CITY (City): лучший город с его средними парамтерами.
         """
 
-        global BEST_CITY
-        thread = [0] * len(self)
-        for number, city_data in enumerate(self):
-            thread[number] = MyThread(
-                City({'city': city_data['city'], 'avg': city_data['avg']}))
-        for number, city_data in enumerate(self):
-            thread[number].start()
-        for number, city_data in enumerate(self):
-            thread[number].join()
-        return BEST_CITY
+        for city_data in cities:
+            logging.info(f"Проверяем город {city_data['city']}.")
+            self.compare(
+                City({'city': city_data['city'], 'avg': city_data['avg']})
+            )
+
+        return self.best_city

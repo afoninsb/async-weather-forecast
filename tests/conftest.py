@@ -1,6 +1,18 @@
 import pytest
 
-from tasks import City
+from tasks import DataAnalyzingTask, DataCalculationTask
+
+
+@pytest.fixture()
+def get_datacalculationtask():
+    """Получаем объект DataCalculationTask."""
+    return DataCalculationTask()
+
+
+@pytest.fixture()
+def get_dataanalyzingtask():
+    """Получаем объект DataAnalyzingTask."""
+    return DataAnalyzingTask()
 
 
 @pytest.fixture()

@@ -8,3 +8,5 @@ venv/
 .pytest_cache/
 .vscode/
 setup.cfg
+cities_data.csv
+forecasting-log.log
