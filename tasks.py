@@ -128,7 +128,7 @@ class DataCalculationTask:
         avg_dry = float("{0:.1f}".format(self.AVG_DRY))
         logging.info(
             'Завершили расчёт средних значений за все дни '
-            f'для города {city_name}.'
+            f'для города {city_name}. '
             f'avg_temp = {avg_temp}, avg_dry = {avg_dry}'
         )
         city_data['avg'] = {'avg_temp': avg_temp, 'avg_dry': avg_dry}
@@ -213,7 +213,7 @@ class DataAnalyzingTask:
         """Поиск города с лучшими параметрами.
 
         Args:
-            self (City): объект класса City.
+            city (City): объект класса City.
         """
 
         logging.info(f"Сравниваем:  {city} и {self.best_city}.")
@@ -227,7 +227,7 @@ class DataAnalyzingTask:
         Args:
             self (dict): словарь: город и средние данные о погоде в нем.
         Returns:
-            BEST_CITY (City): лучший город с его средними парамтерами.
+            best_city (City): лучший город с его средними парамтерами.
         """
 
         for city_data in cities:
