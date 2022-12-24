@@ -216,6 +216,7 @@ class DataAnalyzingTask:
             self (City): объект класса City.
         """
 
+        logging.info(f"Сравниваем:  {city} и {self.best_city}.")
         if city < self.best_city:
             self.best_city = city
         logging.info(f'Пока лучший город {self.best_city}')
